@@ -26,11 +26,15 @@ module ActiveMerchant #:nodoc:
           end
   
           def gross
-            sprintf("%.2f", params['amount'].to_f)
+            params['amount']
+          end
+
+          def payment_state
+            params['paymentState']
           end
 
           def status
-            case params['paymentState']
+            case payment_state
             when 'SUCCESS'
               'Completed'
             when 'CANCEL'
