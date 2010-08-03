@@ -46,11 +46,15 @@ module ActiveMerchant #:nodoc:
 
           # Verify the received fingerprint
           def acknowledge
-            p = params.clone
-            p['secret'] = @options[:secret]
-            md5digest = Digest::MD5.hexdigest(p['responseFingerprintOrder'].split(',').map { |key| p[key] }.join)
+            if params['paymentState'] == 'SUCCESS'
+              p = params.clone
+              p['secret'] = @options[:secret]
+              md5digest = Digest::MD5.hexdigest(p['responseFingerprintOrder'].split(',').map { |key| p[key] }.join)
 
-            md5digest == params['responseFingerprint']
+              md5digest == params['responseFingerprint']
+            else
+              true
+            end
           end
         end
       end
