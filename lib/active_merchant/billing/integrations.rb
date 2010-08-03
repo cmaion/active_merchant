@@ -1,12 +1,14 @@
 
-# make the bogus gateway be classified correctly by the inflector
+# make the bogus gateway and qenta be classified correctly by the inflector
 if defined?(ActiveSupport::Inflector)
   ActiveSupport::Inflector.inflections do |inflect|
     inflect.uncountable 'bogus'
+    inflect.singular 'qenta', 'qenta'
   end
 else
   Inflector.inflections do |inflect|
     inflect.uncountable 'bogus'
+    inflect.singular 'qenta', 'qenta'
   end
 end
 
