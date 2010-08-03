@@ -5,11 +5,11 @@ module ActiveMerchant #:nodoc:
         class Helper < ActiveMerchant::Billing::Integrations::Helper
           mapping :account, 'customerId'
           mapping :amount, 'amount'
-          mapping :order, 'orderDescription'
+          mapping :order, [ 'orderDescription', 'order_id' ]
 
           def initialize(order, account, options = {})
             super
-            add_field('test', 1) if @fields['customerId'] == 'D200001'
+            add_field('test', 1) if account == 'D200001'
             add_field('language', 'en')
             add_field('paymenttype', 'CCARD')
           end
@@ -25,6 +25,7 @@ module ActiveMerchant #:nodoc:
           mapping :cancel_return_url, [ 'cancelURL', 'failureURL' ]
           mapping :logo, 'imageURL'
           mapping :contact_url, 'serviceURL'
+          mapping :window_name, 'windowName'
           mapping :secret, 'secret'
 
           def form_fields
