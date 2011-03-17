@@ -1,4 +1,3 @@
-
 # make the bogus gateway and qenta be classified correctly by the inflector
 if defined?(ActiveSupport::Inflector)
   ActiveSupport::Inflector.inflections do |inflect|

@@ -8,6 +8,14 @@ require 'mocha'
 require 'yaml'
 require 'active_merchant'
 
+require 'active_support/core_ext/integer/time'
+require 'active_support/core_ext/numeric/time'
+
+begin
+  require 'active_support/core_ext/time/acts_like'
+rescue LoadError
+end
+
 begin
   gem 'actionpack'
 rescue LoadError
@@ -15,7 +23,9 @@ rescue LoadError
 end
 
 require 'action_controller'
+require "action_view/template"
 begin
+  require 'active_support/core_ext/module/deprecation'
   require 'action_dispatch/testing/test_process'
 rescue LoadError
   require 'action_controller/test_process'
@@ -23,6 +33,9 @@ end
 require 'active_merchant/billing/integrations/action_view_helper'
 
 ActiveMerchant::Billing::Base.mode = :test
+
+require 'logger'
+ActiveMerchant::Billing::Gateway.logger = Logger.new(STDOUT) if ENV['DEBUG_ACTIVE_MERCHANT'] == 'true'
 
 # Test gateways
 class SimpleTestGateway < ActiveMerchant::Billing::Gateway
