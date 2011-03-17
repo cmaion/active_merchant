@@ -5,7 +5,7 @@ module ActiveMerchant #:nodoc:
   module Billing #:nodoc:
     module Integrations #:nodoc:
       module Qenta
-        # Parser and handler for incoming Automatic Payment Confirmations from Nochex.
+        # Parser and handler for incoming Automatic Payment Confirmations from Qenta.
         class Notification < ActiveMerchant::Billing::Integrations::Notification
           include ActiveMerchant::PostsData
 

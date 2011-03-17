@@ -7,7 +7,7 @@ module ActiveMerchant #:nodoc:
         autoload :Notification, 'active_merchant/billing/integrations/qenta/notification.rb'
         
         mattr_accessor :service_url
-        self.service_url = 'https://www.qenta.com/qpay/init.php'
+        self.service_url = 'https://secure.wirecard-cee.com/qpay/init.php'
         
         def self.notification(post)
           Notification.new(post)
