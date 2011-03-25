@@ -3,8 +3,15 @@ module ActiveMerchant #:nodoc:
     module Integrations #:nodoc:
       module Moneybookers
         class Helper < ActiveMerchant::Billing::Integrations::Helper
+          def initialize(order, account, options = {})
+            super
+            add_field('merchant_fields', 'order_id, platform')
+            add_field('platform', application_id.to_s) unless application_id.blank?
+            add_field('hide_login', 1)
+          end
+
           mapping :account, 'pay_to_email'
-          mapping :order, 'transaction_id'
+          mapping :order, [ 'transaction_id', 'order_id' ] # transaction_id is optional and disregarded by Moneybookers if over 32 characters (e.g. 36-char UUIDs)
           mapping :amount, 'amount'
           mapping :currency, 'currency'
           
@@ -26,6 +33,7 @@ module ActiveMerchant #:nodoc:
           mapping :return_url, 'return_url'
           mapping :cancel_return_url, 'cancel_url'
           mapping :description, 'detail1_text'
+          mapping :application_id, 'platform'
         end
       end
     end

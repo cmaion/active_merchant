@@ -8,17 +8,28 @@ module ActiveMerchant #:nodoc:
         class Notification < ActiveMerchant::Billing::Integrations::Notification
           include PostsData
 
-          # was the transaction comlete?
+          # was the transaction complete?
           def complete?
-            status == "2"
+            status == 'Completed'
           end
 
           def status
-            params['status']
+            case params['status']
+            when '2'
+              'Completed'
+            when '0'
+              'Pending'
+            when '-1'
+              'Voided'
+            when '-2'
+              'Failed'
+            when '-3'
+              'Chargeback'
+            end
           end
 
           def item_id
-            nil
+            params['order_id']
           end
 
           def transaction_id
@@ -90,8 +101,8 @@ module ActiveMerchant #:nodoc:
           #     else
           #       ... log possible hacking attempt ...
           #     end
-          def acknowledge(secret = '')
-            fields = [merchant_id, transaction_id, Digest::MD5.hexdigest(secret).upcase, gross, currency, status].join
+          def acknowledge(secret = @options[:secret])
+            fields = [merchant_id, transaction_id, Digest::MD5.hexdigest(secret).upcase, gross, currency, params['status']].join
             md5sig == Digest::MD5.hexdigest(fields).upcase
           end
         end
