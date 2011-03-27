@@ -11,6 +11,7 @@ module ActiveMerchant #:nodoc:
           end
 
           mapping :account, 'pay_to_email'
+          mapping :business_name, 'recipient_description'
           mapping :order, [ 'transaction_id', 'order_id' ] # transaction_id is optional and disregarded by Moneybookers if over 32 characters (e.g. 36-char UUIDs)
           mapping :amount, 'amount'
           mapping :currency, 'currency'
