@@ -17,7 +17,7 @@ module ActiveMerchant #:nodoc:
           def secret(value)
             @secret = value
           end
-          
+
           mapping :description, 'displayText'
           mapping :currency, 'currency'
           mapping :notify_url, 'confirmURL'
@@ -27,6 +27,7 @@ module ActiveMerchant #:nodoc:
           mapping :contact_url, 'serviceURL'
           mapping :window_name, 'windowName'
           mapping :secret, 'secret'
+          mapping :language, 'language'
 
           def form_fields
             @fields.merge(generate_request_finger_print)
