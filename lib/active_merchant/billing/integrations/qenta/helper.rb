@@ -5,7 +5,7 @@ module ActiveMerchant #:nodoc:
         class Helper < ActiveMerchant::Billing::Integrations::Helper
           mapping :account, 'customerId'
           mapping :amount, 'amount'
-          mapping :order, [ 'orderDescription', 'order_id', 'orderNumber' ]
+          mapping :order, [ 'orderDescription', 'order_id' ]
 
           def initialize(order, account, options = {})
             super
