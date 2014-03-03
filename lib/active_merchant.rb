@@ -27,10 +27,29 @@ require 'active_support/core_ext/hash/indifferent_access'
 require 'active_support/core_ext/hash/conversions'
 require 'active_support/core_ext/object/conversions'
 require 'active_support/core_ext/class/attribute'
-require 'active_support/core_ext/class/attribute_accessors'
+
+if(!defined?(ActiveSupport::VERSION) || (ActiveSupport::VERSION::STRING < "4.1"))
+  require 'active_support/core_ext/class/attribute_accessors'
+end
+
 require 'active_support/core_ext/class/delegating_attributes'
 require 'active_support/core_ext/module/attribute_accessors'
-require 'active_support/base64'
+
+begin
+  require 'active_support/base64'
+
+  unless defined?(Base64)
+    Base64 = ActiveSupport::Base64
+  end
+
+  unless Base64.respond_to?(:strict_encode64)
+    def Base64.strict_encode64(v)
+      ActiveSupport::Base64.encode64s(v)
+    end
+  end
+rescue LoadError
+  require 'base64'
+end
 
 require 'securerandom'
 require 'builder'

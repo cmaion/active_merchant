@@ -1,9 +1,9 @@
-require 'json'
+require 'active_support/core_ext/hash/slice'
 
 module ActiveMerchant #:nodoc:
   module Billing #:nodoc:
     class StripeGateway < Gateway
-      LIVE_URL = 'https://api.stripe.com/v1/'
+      self.live_url = 'https://api.stripe.com/v1/'
 
       AVS_CODE_TRANSLATOR = {
         'line1: pass, zip: pass' => 'Y',
@@ -21,7 +21,7 @@ module ActiveMerchant #:nodoc:
         'unchecked' => 'P'
       }
 
-      self.supported_countries = ['US']
+      self.supported_countries = %w(US CA GB AU IE FR NL BE DE ES)
       self.default_currency = 'USD'
       self.money_format = :cents
       self.supported_cardtypes = [:visa, :master, :american_express, :discover, :jcb, :diners_club]
@@ -32,64 +32,150 @@ module ActiveMerchant #:nodoc:
       def initialize(options = {})
         requires!(options, :login)
         @api_key = options[:login]
+        @fee_refund_api_key = options[:fee_refund_login]
+        @version = options[:version]
+
         super
       end
 
-      def purchase(money, creditcard, options = {})
-        post = {}
-
-        add_amount(post, money, options)
-        add_creditcard(post, creditcard, options)
-        add_customer(post, options)
-        add_customer_data(post, options)
-        add_flags(post, options)
-
-        raise ArgumentError.new("Customer or Credit Card required.") if !post[:card] && !post[:customer]
-
-        commit('charges', post)
-      end
-
       def authorize(money, creditcard, options = {})
-        purchase(money, creditcard, options.merge(:uncaptured => true))
+        post = create_post_for_auth_or_purchase(money, creditcard, options)
+        post[:capture] = "false"
+
+        commit(:post, 'charges', post, options)
       end
 
-      def capture(money, identification, options = {})
-        commit("charges/#{CGI.escape(identification)}/capture", {})
+      # To create a charge on a card or a token, call
+      #
+      #   purchase(money, card_hash_or_token, { ... })
+      #
+      # To create a charge on a customer, call
+      #
+      #   purchase(money, nil, { :customer => id, ... })
+      def purchase(money, creditcard, options = {})
+        post = create_post_for_auth_or_purchase(money, creditcard, options)
+
+        commit(:post, 'charges', post, options)
       end
 
-      def void(identification, options={})
-        commit("charges/#{CGI.escape(identification)}/refund", {})
+      def capture(money, authorization, options = {})
+        post = {:amount => amount(money)}
+        add_application_fee(post, options)
+
+        commit(:post, "charges/#{CGI.escape(authorization)}/capture", post, options)
+      end
+
+      def void(identification, options = {})
+        commit(:post, "charges/#{CGI.escape(identification)}/refund", {}, options)
       end
 
       def refund(money, identification, options = {})
-        post = {}
+        post = {:amount => amount(money)}
+        post[:refund_application_fee] = true if options[:refund_application_fee]
 
-        post[:amount] = amount(money) if money
+        MultiResponse.run(:first) do |r|
+          r.process { commit(:post, "charges/#{CGI.escape(identification)}/refund", post, options) }
 
-        commit("charges/#{CGI.escape(identification)}/refund", post)
+          return r unless options[:refund_fee_amount]
+
+          r.process { fetch_application_fees(identification, options) }
+          r.process { refund_application_fee(options[:refund_fee_amount], application_fee_from_response(r), options) }
+        end
       end
 
-      def store(creditcard, options={})
+      def application_fee_from_response(response)
+        return unless response.success?
+
+        application_fees = response.params["data"].select { |fee| fee["object"] == "application_fee" }
+        application_fees.first["id"] unless application_fees.empty?
+      end
+
+      def refund_application_fee(money, identification, options = {})
+        return Response.new(false, "Application fee id could not be found") unless identification
+
+        post = {:amount => amount(money)}
+        options.merge!(:key => @fee_refund_api_key)
+
+        commit(:post, "application_fees/#{CGI.escape(identification)}/refund", post, options)
+      end
+
+      # Note: creating a new credit card will not change the customer's existing default credit card (use :set_default => true)
+      def store(creditcard, options = {})
         post = {}
-        add_creditcard(post, creditcard, options)
-        add_customer_data(post, options)
+        card_params = {}
+        add_creditcard(card_params, creditcard, options)
+        post[:description] = options[:description] if options[:description]
+        post[:email] = options[:email] if options[:email]
 
         if options[:customer]
-          commit("customers/#{CGI.escape(options[:customer])}", post)
+          MultiResponse.run(:first) do |r|
+            # The /cards endpoint does not update other customer parameters.
+            r.process { commit(:post, "customers/#{CGI.escape(options[:customer])}/cards", card_params, options) }
+
+            if options[:set_default] and r.success? and !r.params['id'].blank?
+              post[:default_card] = r.params['id']
+            end
+
+            if post.count > 0
+              r.process { update_customer(options[:customer], post) }
+            end
+          end
         else
-          commit('customers', post)
+          commit(:post, 'customers', post.merge(card_params), options)
+        end
+      end
+
+      def update(customer_id, creditcard, options = {})
+        options = options.merge(:customer => customer_id, :set_default => true)
+        store(creditcard, options)
+      end
+
+      def update_customer(customer_id, options = {})
+        commit(:post, "customers/#{CGI.escape(customer_id)}", options, options)
+      end
+
+      def unstore(customer_id, card_id = nil, options = {})
+        if card_id.nil?
+          commit(:delete, "customers/#{CGI.escape(customer_id)}", nil, options)
+        else
+          commit(:delete, "customers/#{CGI.escape(customer_id)}/cards/#{CGI.escape(card_id)}", nil, options)
         end
       end
 
       private
+
+      def create_post_for_auth_or_purchase(money, creditcard, options)
+        post = {}
+        add_amount(post, money, options)
+        add_creditcard(post, creditcard, options)
+        add_customer(post, creditcard, options)
+        add_customer_data(post,options)
+        post[:description] = options[:description]
+        post[:metadata] = { email: options[:email] } if options[:email]
+        add_flags(post, options)
+        add_application_fee(post, options)
+        post
+      end
 
       def add_amount(post, money, options)
         post[:amount] = amount(money)
         post[:currency] = (options[:currency] || currency(money)).downcase
       end
 
+      def add_application_fee(post, options)
+        post[:application_fee] = options[:application_fee] if options[:application_fee]
+      end
+
+      def add_expand_parameters(post, options)
+        post[:expand] = Array.wrap(options[:expand])
+      end
+
       def add_customer_data(post, options)
-        post[:description] = options[:email] || options[:description]
+        metadata_options = [:description, :ip, :user_agent, :referrer]
+        post.update(options.slice(*metadata_options))
+
+        post[:external_id] = options[:order_id]
+        post[:payment_user_agent] = "Stripe/v1 ActiveMerchantBindings/#{ActiveMerchant::VERSION}"
       end
 
       def add_address(post, options)
@@ -100,31 +186,47 @@ module ActiveMerchant #:nodoc:
           post[:card][:address_country] = address[:country] if address[:country]
           post[:card][:address_zip] = address[:zip] if address[:zip]
           post[:card][:address_state] = address[:state] if address[:state]
+          post[:card][:address_city] = address[:city] if address[:city]
         end
       end
 
       def add_creditcard(post, creditcard, options)
+        card = {}
         if creditcard.respond_to?(:number)
-          card = {}
-          card[:number] = creditcard.number
-          card[:exp_month] = creditcard.month
-          card[:exp_year] = creditcard.year
-          card[:cvc] = creditcard.verification_value if creditcard.verification_value?
-          card[:name] = creditcard.name if creditcard.name
-          post[:card] = card
+          if creditcard.respond_to?(:track_data) && creditcard.track_data.present?
+            card[:swipe_data] = creditcard.track_data
+          else
+            card[:number] = creditcard.number
+            card[:exp_month] = creditcard.month
+            card[:exp_year] = creditcard.year
+            card[:cvc] = creditcard.verification_value if creditcard.verification_value?
+            card[:name] = creditcard.name if creditcard.name
+          end
 
+          post[:card] = card
           add_address(post, options)
         elsif creditcard.kind_of?(String)
-          post[:card] = creditcard
+          if options[:track_data]
+            card[:swipe_data] = options[:track_data]
+          else
+            card = creditcard
+          end
+          post[:card] = card
         end
       end
 
-      def add_customer(post, options)
-        post[:customer] = options[:customer] if options[:customer] && !post[:card]
+      def add_customer(post, creditcard, options)
+        post[:customer] = options[:customer] if options[:customer] && !creditcard.respond_to?(:number)
       end
 
       def add_flags(post, options)
         post[:uncaptured] = true if options[:uncaptured]
+      end
+
+      def fetch_application_fees(identification, options = {})
+        options.merge!(:key => @fee_refund_api_key)
+
+        commit(:get, "application_fees?charge=#{identification}", nil, options)
       end
 
       def parse(body)
@@ -132,6 +234,8 @@ module ActiveMerchant #:nodoc:
       end
 
       def post_data(params)
+        return nil unless params
+
         params.map do |key, value|
           next if value.blank?
           if value.is_a?(Hash)
@@ -140,34 +244,43 @@ module ActiveMerchant #:nodoc:
               h["#{key}[#{k}]"] = v unless v.blank?
             end
             post_data(h)
+          elsif value.is_a?(Array)
+            value.map { |v| "#{key}[]=#{CGI.escape(v.to_s)}" }.join("&")
           else
             "#{key}=#{CGI.escape(value.to_s)}"
           end
         end.compact.join("&")
       end
 
-      def headers
+      def headers(options = {})
         @@ua ||= JSON.dump({
           :bindings_version => ActiveMerchant::VERSION,
           :lang => 'ruby',
           :lang_version => "#{RUBY_VERSION} p#{RUBY_PATCHLEVEL} (#{RUBY_RELEASE_DATE})",
           :platform => RUBY_PLATFORM,
-          :publisher => 'active_merchant',
-          :uname => (RUBY_PLATFORM =~ /linux|darwin/i ? `uname -a 2>/dev/null`.strip : nil)
+          :publisher => 'active_merchant'
         })
 
-        {
-          "Authorization" => "Basic " + ActiveSupport::Base64.encode64(@api_key.to_s + ":").strip,
+        key     = options[:key] || @api_key
+        version = options[:version] || @version
+
+        headers = {
+          "Authorization" => "Basic " + Base64.encode64(key.to_s + ":").strip,
           "User-Agent" => "Stripe/v1 ActiveMerchantBindings/#{ActiveMerchant::VERSION}",
-          "X-Stripe-Client-User-Agent" => @@ua
+          "X-Stripe-Client-User-Agent" => @@ua,
+          "X-Stripe-Client-User-Metadata" => {:ip => options[:ip]}.to_json
         }
+        headers.merge!("Stripe-Version" => version) if version
+        headers
       end
 
-      def commit(url, parameters, method=:post)
+      def commit(method, url, parameters=nil, options = {})
+        add_expand_parameters(parameters, options) if parameters
+
         raw_response = response = nil
         success = false
         begin
-          raw_response = ssl_request(method, LIVE_URL + url, post_data(parameters), headers)
+          raw_response = ssl_request(method, self.live_url + url, post_data(parameters), headers(options))
           response = parse(raw_response)
           success = !response.key?("error")
         rescue ResponseError => e
@@ -177,13 +290,13 @@ module ActiveMerchant #:nodoc:
           response = json_error(raw_response)
         end
 
-        card = response["card"] || {}
+        card = response["card"] || response["active_card"] || {}
         avs_code = AVS_CODE_TRANSLATOR["line1: #{card["address_line1_check"]}, zip: #{card["address_zip_check"]}"]
         cvc_code = CVC_CODE_TRANSLATOR[card["cvc_check"]]
         Response.new(success,
           success ? "Transaction approved" : response["error"]["message"],
           response,
-          :test => !response["livemode"],
+          :test => response.has_key?("livemode") ? !response["livemode"] : false,
           :authorization => response["id"],
           :avs_result => { :code => avs_code },
           :cvv_result => cvc_code
