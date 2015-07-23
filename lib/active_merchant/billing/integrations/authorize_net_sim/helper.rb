@@ -31,7 +31,7 @@ module ActiveMerchant #:nodoc:
           def secret(value)
             @secret = value
           end
-          
+
           def form_fields
             @fields.merge(generate_request_finger_print)
           end
@@ -39,7 +39,7 @@ module ActiveMerchant #:nodoc:
           def generate_request_finger_print
             x_fp_sequence = rand(99999)
             x_fp_timestamp = Time.now.to_i
-            x_fp_hash = OpenSSL::HMAC.hexdigest(OpenSSL::Digest::Digest.new('md5'), @secret, "#{@fields['x_login']}^#{x_fp_sequence}^#{x_fp_timestamp}^#{@fields['x_amount']}^")
+            x_fp_hash = OpenSSL::HMAC.hexdigest(OpenSSL::Digest.new('md5'), @secret, "#{@fields['x_login']}^#{x_fp_sequence}^#{x_fp_timestamp}^#{@fields['x_amount']}^")
             { 'x_fp_sequence' => x_fp_sequence,
               'x_fp_timestamp' => x_fp_timestamp,
               'x_fp_hash' => x_fp_hash
