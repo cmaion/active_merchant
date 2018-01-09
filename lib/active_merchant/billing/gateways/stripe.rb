@@ -149,6 +149,7 @@ module ActiveMerchant #:nodoc:
         add_amount(post, money, options)
         add_creditcard(post, creditcard, options)
         add_customer(post, creditcard, options)
+        add_source(post, options)
         add_customer_data(post,options)
         post[:description] = options[:description]
         post[:statement_descriptor] = options[:statement_descriptor] if options[:statement_descriptor]
@@ -222,6 +223,10 @@ module ActiveMerchant #:nodoc:
 
       def add_customer(post, creditcard, options)
         post[:customer] = options[:customer] if options[:customer] && !creditcard.respond_to?(:number)
+      end
+
+      def add_source(post, options)
+        post[:source] = options[:source] if options[:source]
       end
 
       def add_flags(post, options)
