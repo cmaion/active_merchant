@@ -161,7 +161,7 @@ module ActiveMerchant #:nodoc:
           def acknowledge(authcode = nil)
             payload =  raw
 
-            response = ssl_post(Paypal.service_url + '?cmd=_notify-validate', payload,
+            response = ssl_post(Paypal.ipn_service_url + '?cmd=_notify-validate', payload,
               'Content-Length' => "#{payload.size}",
               'User-Agent'     => "Active Merchant -- http://activemerchant.org"
             )
